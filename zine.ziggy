@@ -1,0 +1,10 @@
+Site {
+    .title = "Welcome to Johnny's World",
+    .host_url = "https://marler8997.github.io",
+    .content_dir_path = "content",
+    .layouts_dir_path = "layouts",
+    .assets_dir_path = "assets",
+    .static_assets = [
+        "Temml.woff2",
+    ],
+}
