@@ -23,15 +23,47 @@ code.ziggy .keyword,
 code.ziggy .type {
   color: var(--light-yellow);
 }
-
 code.ziggy .string {
   color: var(--dark-yellow);
 }
-
 code.ziggy .numeric.constant {
   color: var(--magenta);
 }
-
 code.ziggy .function {
+  color: var(--blue);
+}
+
+
+code.c {
+  color: var(--cyan);
+}
+code.c .keyword,
+code.c .type {
+  color: var(--light-yellow);
+}
+code.c .string {
+  color: var(--dark-yellow);
+}
+code.c .numeric.constant {
+  color: var(--magenta);
+}
+code.c .function {
+  color: var(--blue);
+}
+
+code.cpp {
+  color: var(--cyan);
+}
+code.cpp .keyword,
+code.cpp .type {
+  color: var(--light-yellow);
+}
+code.cpp .string {
+  color: var(--dark-yellow);
+}
+code.cpp .numeric.constant {
+  color: var(--magenta);
+}
+code.cpp .function {
   color: var(--blue);
 }
