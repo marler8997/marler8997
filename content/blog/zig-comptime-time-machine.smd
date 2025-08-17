@@ -1,0 +1,422 @@
+---
+.title = "The Zig Comptime Time Machine",
+.author = "",
+.date = @date("2025-08-17T00:00:00"),
+.layout = "blogpost.shtml",
+---
+
+> NOTE: code examples use zig version 0.14.1
+
+One of the coolest things about Zig is **comptime**. It empowers the user and can result in fewer branches, tighter loops, and faster runtime, but here's the fun part: Zig also gives us a *time machine*. With a bit of "pixie dust", you can take a **runtime value** and project it backwards into the compiler's world as a **comptime value**. Let's see how:
+
+Start with two functions: one that accepts a value at runtime, and one that requires it at compile time:
+
+```zig
+fn fooRuntime(x: u8) u8 {
+    return x;
+}
+fn fooComptime(comptime x: u8) u8 {
+    return x;
+}
+```
+
+If we call them with a literal comptime-known value, both work fine, but what happens if we pass a value that's only known at runtime?
+
+```zig
+fn fooRuntime(x: u8) u8 {
+    return x;
+}
+fn fooComptime(comptime x: u8) u8 {
+    return x;
+}
+pub fn main() void {
+    const runtime_value: u8 = @truncate(@as(u64, @bitCast(std.time.timestamp())));
+    print("fooRuntime(runtime_value) = {}\n", .{fooRuntime(runtime_value)});
+    print("fooComptime(runtime_value) = {}\n", .{fooComptime(runtime_value)});
+}
+const std = @import("std");
+const print = std.debug.print;
+```
+
+Zig isn't having it:
+
+```sh
++ zig run timemachine.zig
+timemachine.zig:10:62: error: unable to resolve comptime value
+    print("fooComptime(runtime_value) = {}\n", .{fooComptime(runtime_value)});
+                                                             ^~~~~~~~~~~~~
+timemachine.zig:10:62: note: argument to comptime parameter must be comptime-known
+timemachine.zig:4:16: note: parameter declared comptime here
+fn fooComptime(comptime x: u8) u8 {
+               ^~~~~~~~
+```
+
+How could we make this work? How can you pass a runtime value to a function that requires comptime?
+
+It turns out, any runtime value can effectively become "comptime", you just have to copy the code for every possible value!
+
+Our example takes a `u8` comptime value, so, we just have to copy the code 255 times.
+
+```
+fn fooRuntime(x: u8) u8 {
+    return x;
+}
+fn fooComptime(comptime x: u8) u8 {
+    return x;
+}
+pub fn main() void {
+    const runtime_value: u8 = @truncate(@as(u64, @bitCast(std.time.timestamp())));
+    print("fooRuntime(runtime_value) = {}\n", .{fooRuntime(runtime_value)});
+    switch (runtime_value) {
+        0 => print("fooComptime(runtime_value) = {}\n", .{fooComptime(0)}),
+        1 => print("fooComptime(runtime_value) = {}\n", .{fooComptime(1)}),
+        2 => print("fooComptime(runtime_value) = {}\n", .{fooComptime(2)}),
+        3 => print("fooComptime(runtime_value) = {}\n", .{fooComptime(3)}),
+        4 => print("fooComptime(runtime_value) = {}\n", .{fooComptime(3)}),
+        else => @panic("todo: write out the remaning 200 cases"),
+    }
+}
+const std = @import("std");
+const print = std.debug.print;
+```
+
+But who's going to type all this out? Vim Macro you say? I'm not smart enough for that. Fortunately, zig 0.10.0 introduced `inline else` which does this for us:
+
+```
+fn fooRuntime(x: u8) u8 {
+    return x;
+}
+fn fooComptime(comptime x: u8) u8 {
+    return x;
+}
+pub fn main() void {
+    const runtime_value: u8 = @truncate(@as(u64, @bitCast(std.time.timestamp())));
+    print("fooRuntime(runtime_value) = {}\n", .{fooRuntime(runtime_value)});
+    switch (runtime_value) {
+        inline else => |comptime_value| print("fooComptime(runtime_value) = {}\n", .{fooComptime(comptime_value)}),
+    }
+}
+const std = @import("std");
+const print = std.debug.print;
+```
+
+And there's our time machine:
+
+```
+switch (runtime_value) {
+    inline else => |comptime_value| ...,
+}
+```
+
+Have more than 1 runtime value? No problem:
+
+```
+fn foo(comptime a: u8, comptime b: u8, comptime c: u8) { ... }
+
+switch (a) {
+    inline else => |a_comptime| switch (b) {
+        inline else => |b_comptime| switch (c) {
+            inline else => |c_comptime| foo(a_comptime, b_comptime, c_comptime),
+        },
+    },
+}
+```
+
+Of course it goes without saying that we can nest these as many times as we want with no consequences.
+
+Ok jokes aside, when would you use this? Our contrived example that takes a `u8` is a stretch, but, what about enum types that typically have fewer possible values? For example, maybe you have a function that requires knowing the endianness at comptime, or, maybe you're working with multi-channel audio and have some functions or types that could make use of knowing the format at compile time? "That's oddly specific" you say? Ok yes, I just wrote this code and maybe it's the whole inspiration for this post, so sue me. Anyway, here's a `convert` function that takes audio in one format and converts it to another, but, it takes the formats at comptime:
+
+```zig
+fn convert(
+    comptime format_in: FrameFormat,
+    comptime format_out: FrameFormat,
+    buffer_in: [*]align(8) const u8,
+    buffer_out: [*]align(8) u8,
+    frame_count: usize,
+);
+```
+
+Why? In audio you can't be late. If you're too slow you literally miss the bus and that little buffer of audio that was born and raised with love gets discarded and never realizes their dream to perform on the big stage. In my case, I'm also restricted to 1 and 2 channel audio which means, we only have to support around 8 possible audio formats. So, if we write our audio conversion code using comptime-known values for maximal performance, we know that code will only be duplicated 8 times. Here's working example of this:
+
+```
+const ChannelCount = enum {
+    @"1",
+    @"2",
+    pub fn int(self: ChannelCount, comptime T: type) T {
+        return switch (self) {
+            .@"1" => 1,
+            .@"2" => 2,
+        };
+    }
+};
+const SampleType = enum {
+    u8,
+    i16,
+    i32,
+    f32,
+    pub fn Type(self: SampleType) type {
+        return switch (self) {
+            .u8 => u8,
+            .i16 => i16,
+            .i32 => i32,
+            .f32 => f32,
+        };
+    }
+    pub fn size(self: SampleType, comptime T: type) T {
+        return switch (self) {
+            .u8 => 1,
+            .i16 => 2,
+            .i32 => 4,
+            .f32 => 4,
+        };
+    }
+};
+const FrameFormat = struct {
+    channel_count: ChannelCount,
+    sample_type: SampleType,
+    pub fn init(channel_count: ChannelCount, sample_type: SampleType) FrameFormat {
+        return .{ .channel_count = channel_count, .sample_type = sample_type };
+    }
+    pub fn frameSize(self: FrameFormat, comptime T: type) T {
+        return self.channel_count.int(T) * self.sample_type.size(T);
+    }
+    pub fn eql(self: FrameFormat, other: FrameFormat) bool {
+        return self.channel_count == other.channel_count and
+            self.sample_type == other.sample_type;
+    }
+    pub fn Type(self: FrameFormat) type {
+        return @Vector(
+            self.channel_count.int(comptime_int),
+            self.sample_type.Type(),
+        );
+    }
+};
+
+fn convert(
+    comptime format_in: FrameFormat,
+    comptime format_out: FrameFormat,
+    buffer_in: [*]align(8) const u8,
+    buffer_out: [*]align(8) u8,
+    frame_count: usize,
+) void {
+    if (comptime format_in.eql(format_out)) {
+        comptime std.debug.assert(format_in.frameSize(usize) == format_out.frameSize(usize));
+        @memcpy(buffer_out[0..format_out.frameSize(usize)], buffer_in);
+    } else {
+        const frames_in: [*]const format_in.Type() = @ptrCast(buffer_in);
+        const frames_out: [*]format_out.Type() = @ptrCast(buffer_out);
+        for (0..frame_count) |frame| {
+            frames_out[frame] = convertFrame(format_in, format_out, frames_in[frame]);
+        }
+    }
+}
+
+fn convertFrame(
+    comptime format_in: FrameFormat,
+    comptime format_out: FrameFormat,
+    value: format_in.Type(),
+) format_out.Type() {
+    const channel_converted = switch (format_out.channel_count) {
+        .@"1" => switch (format_in.channel_count) {
+            .@"1" => value[0], // mono to mono
+            .@"2" => mix(format_in.sample_type.Type(), value[0], value[1]), // stereo to mono
+        },
+        .@"2" => switch (format_in.channel_count) {
+            .@"1" => @Vector(2, format_in.sample_type.Type()){ value[0], value[0] }, // mono to stereo
+            .@"2" => value, // stereo to stereo
+        },
+    };
+    return switch (format_out.channel_count) {
+        .@"1" => @Vector(1, format_out.sample_type.Type()){convertSample(format_in.sample_type, format_out.sample_type, channel_converted)},
+        .@"2" => @Vector(2, format_out.sample_type.Type()){
+            convertSample(format_in.sample_type, format_out.sample_type, channel_converted[0]),
+            convertSample(format_in.sample_type, format_out.sample_type, channel_converted[1]),
+        },
+    };
+}
+
+fn convertSample(
+    comptime sample_type_in: SampleType,
+    comptime sample_type_out: SampleType,
+    value: sample_type_in.Type(),
+) sample_type_out.Type() {
+    if (sample_type_in == sample_type_out) {
+        return value;
+    }
+
+    return switch (sample_type_out) {
+        .u8 => switch (sample_type_in) {
+            .u8 => unreachable, // handled above
+            .i16 => u8FromI16(value),
+            .i32 => u8FromI32(value),
+            .f32 => u8FromF32(value),
+        },
+        .i16 => switch (sample_type_in) {
+            .u8 => i16FromU8(value),
+            .i16 => unreachable, // handled above
+            .i32 => i16FromI32(value),
+            .f32 => i16FromF32(value),
+        },
+        .i32 => switch (sample_type_in) {
+            .u8 => i32FromU8(value),
+            .i16 => i32FromI16(value),
+            .i32 => unreachable, // handled above
+            .f32 => i32FromF32(value),
+        },
+        .f32 => switch (sample_type_in) {
+            .u8 => f32FromU8(value),
+            .i16 => f32FromI16(value),
+            .i32 => f32FromI32(value),
+            .f32 => unreachable, // handled above
+        },
+    };
+}
+
+// Direct conversion functions between sample types
+fn i16FromU8(value: u8) i16 {
+    // Convert from [0, 255] to [-32768, 32767]
+    return (@as(i16, value) - 128) << 8;
+}
+
+fn i32FromU8(value: u8) i32 {
+    // Convert from [0, 255] to [-2147483648, 2147483647]
+    return (@as(i32, value) - 128) << 24;
+}
+
+fn f32FromU8(value: u8) f32 {
+    // Convert from [0, 255] to [-1.0, 1.0]
+    return (@as(f32, @floatFromInt(value)) / 127.5) - 1.0;
+}
+
+fn u8FromI16(value: i16) u8 {
+    // Convert from [-32768, 32767] to [0, 255]
+    return @as(u8, @intCast((value >> 8) + 128));
+}
+
+fn i32FromI16(value: i16) i32 {
+    // Convert from [-32768, 32767] to [-2147483648, 2147483647]
+    return @as(i32, value) << 16;
+}
+
+fn f32FromI16(value: i16) f32 {
+    // Convert from [-32768, 32767] to [-1.0, 1.0]
+    return @as(f32, @floatFromInt(value)) / 32767.0;
+}
+
+fn u8FromI32(value: i32) u8 {
+    // Convert from [-2147483648, 2147483647] to [0, 255]
+    return @as(u8, @intCast((value >> 24) + 128));
+}
+
+fn i16FromI32(value: i32) i16 {
+    // Convert from [-2147483648, 2147483647] to [-32768, 32767]
+    return @as(i16, @intCast(value >> 16));
+}
+
+fn f32FromI32(value: i32) f32 {
+    // Convert from [-2147483648, 2147483647] to [-1.0, 1.0]
+    return @as(f32, @floatFromInt(value)) / 2147483647.0;
+}
+
+fn u8FromF32(value: f32) u8 {
+    // Convert from [-1.0, 1.0] to [0, 255]
+    const clamped = std.math.clamp(value, -1.0, 1.0);
+    const scaled = (clamped + 1.0) * 127.5;
+    return @as(u8, @intFromFloat(scaled));
+}
+
+fn i16FromF32(value: f32) i16 {
+    // Convert from [-1.0, 1.0] to [-32768, 32767]
+    const clamped = std.math.clamp(value, -1.0, 1.0);
+    const scaled = clamped * 32767.0;
+    return @as(i16, @intFromFloat(scaled));
+}
+
+fn i32FromF32(value: f32) i32 {
+    // Convert from [-1.0, 1.0] to [-2147483648, 2147483647]
+    const clamped = std.math.clamp(value, -1.0, 1.0);
+    const scaled = clamped * 2147483647.0;
+    return @as(i32, @intFromFloat(scaled));
+}
+
+fn mix(comptime T: type, a: T, b: T) T {
+    return switch (T) {
+        u8 => @truncate(@divTrunc(@as(u16, a) + @as(u16, b), 2)),
+        i16 => @truncate(@divTrunc(@as(i32, a) + @as(i32, b), 2)),
+        i32 => @truncate(@divTrunc(@as(i64, a) + @as(i64, b), 2)),
+        f32 => (a + b) * 0.5,
+        else => @compileError("Unsupported type for mixing: " ++ @typeName(T)),
+    };
+}
+
+fn testConvert(
+    format_in: FrameFormat,
+    format_out: FrameFormat,
+    buffer_in: []align(8) const u8,
+    buffer_out: []align(8) u8,
+) void {
+    var timer = std.time.Timer.start() catch @panic("TimerStart");
+    const start_time = timer.lap();
+    const frame_count = @min(
+        @divTrunc(buffer_in.len, format_in.frameSize(usize)),
+        @divTrunc(buffer_out.len, format_out.frameSize(usize)),
+    );
+
+    //
+    // Turning Runtime Values into Comptime!
+    //
+    switch (format_out.sample_type) {
+        inline else => |sample_type_out| switch (format_out.channel_count) {
+            inline else => |channel_count_out| switch (format_in.sample_type) {
+                inline else => |sample_type_in| switch (format_in.channel_count) {
+                    inline else => |channel_count_in| {
+                        // Note we've pushed our for loop "down" inside all these comptime conditionals.
+                        //
+                        // https://matklad.github.io/2023/11/15/push-ifs-up-and-fors-down.html
+                        //
+                        for (0..1000) |_| {
+                            convert(
+                                .init(channel_count_in, sample_type_in),
+                                .init(channel_count_out, sample_type_out),
+                                buffer_in.ptr,
+                                buffer_out.ptr,
+                                frame_count,
+                            );
+                        }
+                    },
+                },
+            },
+        },
+    }
+    const end_time = timer.read();
+    const elapsed_ns = end_time - start_time;
+    const elapsed_ms = @as(f64, @floatFromInt(elapsed_ns)) / std.time.ns_per_ms;
+    print("{d: >7.2} ms | {} > {}\n", .{ elapsed_ms, format_in, format_out });
+}
+
+const FormatPair = struct { FrameFormat, FrameFormat };
+fn testFormatPairs(format_pairs: []const FormatPair) void {
+    var buffer_in: [10_000]u8 align(8) = undefined;
+    var buffer_out: [10_000]u8 align(8) = undefined;
+    for (format_pairs) |p| {
+        testConvert(p[0], p[1], &buffer_in, &buffer_out);
+        testConvert(p[1], p[0], &buffer_in, &buffer_out);
+    }
+}
+
+pub fn main() void {
+    testFormatPairs(&[_]FormatPair{
+        .{ .init(.@"1", .f32), .init(.@"1", .f32) },
+        .{ .init(.@"1", .i16), .init(.@"1", .i16) },
+        .{ .init(.@"1", .f32), .init(.@"1", .f32) },
+        .{ .init(.@"2", .f32), .init(.@"2", .f32) },
+        .{ .init(.@"2", .i16), .init(.@"2", .f32) },
+        .{ .init(.@"1", .f32), .init(.@"2", .f32) },
+    });
+}
+
+const std = @import("std");
+const print = std.debug.print;
+```
+
+TODO: go on to compare this with miniaudio's performance and how in just a few hundred lines of Zig code we were able to beat miniaudio
