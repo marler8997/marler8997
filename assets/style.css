@@ -27,10 +27,12 @@ html {
 }
 
 body {
-  width: 800px;
+  max-width: 800px;
+  width: 100%;
   padding: 15px;
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
 }
 
 .site-title {
@@ -82,4 +84,59 @@ footer {
 
 footer hr {
   width: 100%;
+}
+
+/* Prevent horizontal overflow */
+pre, code {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+pre {
+  white-space: pre;
+  word-wrap: normal;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Prevent long words from breaking layout */
+body {
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* Mobile responsive styles */
+@media (max-width: 768px) {
+  html {
+    font-size: 1em;
+  }
+
+  body {
+    padding: 10px;
+  }
+
+  .site-title {
+    font-size: 1.8em;
+  }
+
+  nav {
+    font-size: 1em;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .block {
+    margin: 5px;
+    padding: 5px 10px;
+  }
+  
+  /* Additional mobile-specific overflow handling */
+  pre {
+    padding: 10px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.3);
+  }
 }
