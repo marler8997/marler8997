@@ -57,7 +57,7 @@ It turns out, any runtime value can effectively become "comptime", you just have
 
 Our example takes a `u8` comptime value, so, we just have to copy the code 255 times.
 
-```
+```zig
 fn fooRuntime(x: u8) u8 {
     return x;
 }
@@ -82,7 +82,7 @@ const print = std.debug.print;
 
 But who's going to type all this out? Vim Macro you say? I'm not smart enough for that. Fortunately, zig 0.10.0 introduced `inline else` which does this for us:
 
-```
+```zig
 fn fooRuntime(x: u8) u8 {
     return x;
 }
@@ -102,7 +102,7 @@ const print = std.debug.print;
 
 And there's our time machine:
 
-```
+```zig
 switch (runtime_value) {
     inline else => |comptime_value| ...,
 }
@@ -110,7 +110,7 @@ switch (runtime_value) {
 
 Have more than 1 runtime value? No problem:
 
-```
+```zig
 fn foo(comptime a: u8, comptime b: u8, comptime c: u8) { ... }
 
 switch (a) {
@@ -138,7 +138,7 @@ fn convert(
 
 Why? In audio you can't be late. If you're too slow you literally miss the bus and that little buffer of audio that was born and raised with love gets discarded and never realizes their dream to perform on the big stage. In my case, I'm also restricted to 1 and 2 channel audio which means, we only have to support around 8 possible audio formats. So, if we write our audio conversion code using comptime-known values for maximal performance, we know that code will only be duplicated 8 times. Here's working example of this:
 
-```
+```zig
 const ChannelCount = enum {
     @"1",
     @"2",

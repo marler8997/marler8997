@@ -3,7 +3,7 @@ h2,
 h3,
 h4,
 h5 {
-  color: #ddd;
+  color: #f7f7f7;
   font-family: "Verdana", sans-serif;
 }
 
@@ -17,13 +17,13 @@ a {
 }
 
 html {
-  color: #ccc;
+  color: #d7d7d7;
   font-family: "Georgia", serif;
   font-size: 1.2em;
   display: flex;
   flex-direction: row;
   justify-content: center;
-  background-color: #111;
+  background-color: #273f4f;
 }
 
 body {

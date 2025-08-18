@@ -22,6 +22,11 @@
 </head>
 <body id="body">
   <h1 :text="$page.title"></h1>
+  <div>
+    <span :text="$page.date.format('January 02, 2006')"></span>
+    &nbsp;•&nbsp;
+    <span>Jonathan Marler</span>
+  </div>
   <div class="post" :html="$page.content()"></div>
   <div id="prev-next">
     <div :if="$page.prevPage?()">
