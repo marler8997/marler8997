@@ -4,7 +4,7 @@ h3,
 h4,
 h5 {
   color: #f7f7f7;
-  font-family: "Verdana", sans-serif;
+  font-family: Inter, sans-serif;
 }
 
 b,
@@ -18,7 +18,7 @@ a {
 
 html {
   color: #d7d7d7;
-  font-family: "Georgia", serif;
+  font-family: Inter, sans-serif;
   font-size: 1.2em;
   display: flex;
   flex-direction: row;
@@ -132,7 +132,7 @@ body {
     margin: 5px;
     padding: 5px 10px;
   }
-  
+
   /* Additional mobile-specific overflow handling */
   pre {
     padding: 10px;

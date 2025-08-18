@@ -4,6 +4,8 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title :text="$site.title"></title>
+    <link rel="preconnect" href="https://rsms.me/">
+    <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
     <link type="text/css" rel="stylesheet" href="$site.asset('style.css').link()">
     <link type="text/css" rel="stylesheet" href="$site.asset('highlight.css').link()">
     <super>
