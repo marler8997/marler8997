@@ -1,0 +1,10 @@
+---
+.title = "Simple Audio Conversion from Scratch",
+.author = "",
+.date = @date("2025-08-19T00:00:00"),
+.layout = "blogpost.shtml",
+---
+
+I'm currently using miniaudio for converting between audio formats, however, it's allocating dynamic memory for the converter and I'd like to understand why. To do so, let's first implement the simplest conversion we can think of that doesn't use any dynamic memory.
+
+
